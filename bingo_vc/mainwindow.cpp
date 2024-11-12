@@ -1,20 +1,37 @@
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+
+#include <QtCore/QDateTime>
+#include <QtMqtt/QMqttClient>
+#include <QtWidgets/QMessageBox>
+
+#include <QPaintEvent>
+#include <QTimer>
+#include <QPainter>
+#include <QPixmap>
+#include <QLabel>
+#include <QImage>
 #include <opencv2/opencv.hpp>
 
 using namespace cv;
 using namespace std;
 using namespace Qt::StringLiterals;
 
-MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
 
     m_client = new QMqttClient(this);
     m_client->setHostname(ui->lineEditHost->text());
     m_client->setPort((ui->lineEditPort->text()).toShort());
+
+    m_client->setUsername("test");
+    m_client->setPassword("test");
 
     connect(m_client, &QMqttClient::stateChanged, this, &MainWindow::updateLogStateChange);
     connect(m_client, &QMqttClient::disconnected, this, &MainWindow::brokerDisconnected);
@@ -26,16 +43,24 @@ MainWindow::MainWindow(QWidget *parent)
             + " Message: "_L1
             //+ message
             + u'\n';
-       // ui->editLog->insertPlainText(content);
+        //ui->editLog->insertPlainText(content);
 
         destImage = QByteArrayToMat(message);
 
         // circle(destImage, Point(destImage.cols / 2, destImage.rows / 2), 50, Scalar(0, 255, 0), 3);
 
         this->update();	//发送刷新消息
+    });
 
-        }
-    );
+    connect(m_client, &QMqttClient::pingResponseReceived, this, [this]() {
+        const QString content = QDateTime::currentDateTime().toString()
+        + "PingResponse\n"_L1;
+        ui->editLog->insertPlainText(content);
+    });
+
+    connect(ui->lineEditHost, &QLineEdit::textChanged, m_client, &QMqttClient::setHostname);
+    //connect(ui->spinBoxPort, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::setClientPort);
+    updateLogStateChange();
 
     isSubscribed = 0;
     isPublished = 0;
@@ -50,7 +75,6 @@ MainWindow::MainWindow(QWidget *parent)
     //设置显示视频用的Label
     imageLabel = new QLabel(this);
     ui->verticalLayout->addWidget(imageLabel);
-
 }
 
 MainWindow::~MainWindow()
@@ -87,21 +111,21 @@ QByteArray MainWindow::matToQByteArray(const Mat &mat) {
     return byteArray;
 }
 
+
 void MainWindow::paintEvent(QPaintEvent *e)
 {
     //显示方法一
-   // QPainter painter(this);
-   // QImage image1 = QImage((uchar*)(srcImage.data), srcImage.cols, srcImage.rows, QImage::Format_RGB888);
-   // painter.drawImage(QPoint(20,20), image1);
+    // QPainter painter(this);
+    // QImage image1 = QImage((uchar*)(srcImage.data), srcImage.cols, srcImage.rows, QImage::Format_RGB888);
+    // painter.drawImage(QPoint(20,20), image1);
     //显示方法二
-   // QImage image2 = QImage((uchar*)(srcImage.data), srcImage.cols, srcImage.rows, QImage::Format_RGB888);
+    // QImage image2 = QImage((uchar*)(srcImage.data), srcImage.cols, srcImage.rows, QImage::Format_RGB888);
 
     QImage image2 = QImage((uchar*)(destImage.data), destImage.cols, destImage.rows, QImage::Format_RGB888);
     imageLabel->setPixmap(QPixmap::fromImage(image2));
     imageLabel->resize(image2.size());
     imageLabel->show();
 }
-
 
 
 void MainWindow::on_buttonConnect_clicked()
@@ -151,6 +175,7 @@ void MainWindow::on_buttonPublish_clicked()
         QMessageBox::critical(this, u"Error"_s, u"Could not publish message"_s);
 
     isPublished = 1;
+
 }
 
 void MainWindow::on_buttonSubscribe_clicked()
@@ -163,4 +188,5 @@ void MainWindow::on_buttonSubscribe_clicked()
     }
 
     isSubscribed = 1;
+
 }
